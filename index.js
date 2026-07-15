@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('dns').setDefaultResultOrder('ipv4first');
 const { Telegraf } = require('telegraf');
 
 // Verify token
@@ -103,7 +104,7 @@ async function translateText(text, from, to) {
       }
     }
   } catch (err) {
-    console.warn("Chrome Translate failed, trying fallback...", err);
+    console.error("❌ Try 1: Chrome Translate failed:", err.message || err);
   }
 
   // Try 2: Standard Google Translate API
@@ -114,9 +115,11 @@ async function translateText(text, from, to) {
       const data = await response.json();
       const translatedText = data[0].map(x => x[0]).join('');
       return translatedText;
+    } else {
+      console.error(`❌ Try 2: Standard Google failed with status: ${response.status}`);
     }
   } catch (err) {
-    console.warn("Standard Google Translate failed, trying fallback...", err);
+    console.error("❌ Try 2: Standard Google Translate failed:", err.message || err);
   }
 
   // Try 3: Gemini Translate (if valid key is provided)
@@ -126,7 +129,7 @@ async function translateText(text, from, to) {
       const geminiTranslation = await translateWithGemini(text, from, to, process.env.GEMINI_API_KEY);
       if (geminiTranslation) return geminiTranslation;
     } catch (err) {
-      console.warn("Gemini Translate failed, trying fallback...", err);
+      console.error("❌ Try 3: Gemini Translate failed:", err.message || err);
     }
   }
 
@@ -143,10 +146,14 @@ async function translateText(text, from, to) {
       const data = await response.json();
       if (data.responseData && data.responseData.translatedText) {
         return data.responseData.translatedText;
+      } else {
+        console.error(`❌ Try 4: MyMemory response data invalid:`, JSON.stringify(data));
       }
+    } else {
+      console.error(`❌ Try 4: MyMemory failed with status: ${response.status}`);
     }
   } catch (err) {
-    console.error("MyMemory Translate failed:", err);
+    console.error("❌ Try 4: MyMemory Translate failed:", err.message || err);
   }
 
   throw new Error("Barcha tarjima provayderlarida xatolik yuz berdi. Iltimos keyinroq urinib ko'ring.");
