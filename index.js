@@ -58,16 +58,72 @@ function getKeyboard(currentMode) {
   return { inline_keyboard };
 }
 
-// Free Google Translation API helper
-async function translateText(text, from, to) {
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${from}&tl=${to}&dt=t&q=${encodeURIComponent(text)}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Translation API HTTP error! status: ${response.status}`);
-  }
+// Gemini Translation helper
+async function translateWithGemini(text, from, to, apiKey) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: `Translate this text from language '${from}' to language '${to}'. Return ONLY the translated text. Do not add any explanations, markdown, introduction, or notes.\nText: ${text}` }
+        ]
+      }]
+    })
+  });
+  if (!response.ok) throw new Error("Gemini translation error");
   const data = await response.json();
-  const translatedText = data[0].map(x => x[0]).join('');
-  return translatedText;
+  if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts[0]) {
+    return data.candidates[0].content.parts[0].text.trim();
+  }
+  return null;
+}
+
+// Free Translation API with Fallbacks
+async function translateText(text, from, to) {
+  // Try 1: Google Translate
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${from}&tl=${to}&dt=t&q=${encodeURIComponent(text)}`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      const translatedText = data[0].map(x => x[0]).join('');
+      return translatedText;
+    }
+  } catch (err) {
+    console.warn("Google Translate failed, trying fallback...", err);
+  }
+
+  // Try 2: Gemini Translate (if valid key is provided)
+  const hasGemini = !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY' && !process.env.GEMINI_API_KEY.startsWith('AQ.');
+  if (hasGemini) {
+    try {
+      const geminiTranslation = await translateWithGemini(text, from, to, process.env.GEMINI_API_KEY);
+      if (geminiTranslation) return geminiTranslation;
+    } catch (err) {
+      console.warn("Gemini Translate failed, trying fallback...", err);
+    }
+  }
+
+  // Try 3: MyMemory API (Free)
+  try {
+    const langPair = `${from === 'auto' ? 'en' : from}|${to}`;
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langPair}`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.responseData && data.responseData.translatedText) {
+        return data.responseData.translatedText;
+      }
+    }
+  } catch (err) {
+    console.error("MyMemory Translate failed:", err);
+  }
+
+  throw new Error("Barcha tarjima provayderlarida xatolik yuz berdi. Iltimos keyinroq urinib ko'ring.");
 }
 
 // Gemini Speech-to-Text helper (uses Gemini 1.5 Flash)
