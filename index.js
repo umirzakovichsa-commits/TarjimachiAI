@@ -84,7 +84,21 @@ async function translateWithGemini(text, from, to, apiKey) {
 
 // Free Translation API with Fallbacks
 async function translateText(text, from, to) {
-  // Try 1: Google Translate
+  // Try 1: Chrome Extension Google Translate API (highly stable, bypasses IP blocks)
+  try {
+    const url = `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=${from}&tl=${to}&q=${encodeURIComponent(text)}`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      if (Array.isArray(data) && data[0]) {
+        return data[0];
+      }
+    }
+  } catch (err) {
+    console.warn("Chrome Translate failed, trying fallback...", err);
+  }
+
+  // Try 2: Standard Google Translate API
   try {
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${from}&tl=${to}&dt=t&q=${encodeURIComponent(text)}`;
     const response = await fetch(url);
@@ -94,10 +108,10 @@ async function translateText(text, from, to) {
       return translatedText;
     }
   } catch (err) {
-    console.warn("Google Translate failed, trying fallback...", err);
+    console.warn("Standard Google Translate failed, trying fallback...", err);
   }
 
-  // Try 2: Gemini Translate (if valid key is provided)
+  // Try 3: Gemini Translate (if valid key is provided)
   const hasGemini = !!process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY' && !process.env.GEMINI_API_KEY.startsWith('AQ.');
   if (hasGemini) {
     try {
@@ -108,7 +122,7 @@ async function translateText(text, from, to) {
     }
   }
 
-  // Try 3: MyMemory API (Free)
+  // Try 4: MyMemory API (Free)
   try {
     const langPair = `${from === 'auto' ? 'en' : from}|${to}`;
     const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langPair}`;
