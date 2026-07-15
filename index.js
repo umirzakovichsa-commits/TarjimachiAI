@@ -84,14 +84,22 @@ async function translateWithGemini(text, from, to, apiKey) {
 
 // Free Translation API with Fallbacks
 async function translateText(text, from, to) {
+  const browserHeaders = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Referer': 'https://translate.google.com/'
+  };
+
   // Try 1: Chrome Extension Google Translate API (highly stable, bypasses IP blocks)
   try {
     const url = `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=${from}&tl=${to}&q=${encodeURIComponent(text)}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { headers: browserHeaders });
     if (response.ok) {
       const data = await response.json();
       if (Array.isArray(data) && data[0]) {
-        return data[0];
+        if (Array.isArray(data[0])) {
+          return data[0][0]; // For auto-detection: [["translatedText", "lang"]]
+        }
+        return data[0]; // For explicit language pairs: ["translatedText"]
       }
     }
   } catch (err) {
@@ -101,7 +109,7 @@ async function translateText(text, from, to) {
   // Try 2: Standard Google Translate API
   try {
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${from}&tl=${to}&dt=t&q=${encodeURIComponent(text)}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { headers: browserHeaders });
     if (response.ok) {
       const data = await response.json();
       const translatedText = data[0].map(x => x[0]).join('');
@@ -126,7 +134,11 @@ async function translateText(text, from, to) {
   try {
     const langPair = `${from === 'auto' ? 'en' : from}|${to}`;
     const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langPair}`;
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': browserHeaders['User-Agent']
+      }
+    });
     if (response.ok) {
       const data = await response.json();
       if (data.responseData && data.responseData.translatedText) {
