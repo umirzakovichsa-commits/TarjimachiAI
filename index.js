@@ -324,6 +324,16 @@ bot.command(['menu', 'settings'], async (ctx) => {
 bot.on('callback_query', async (ctx) => {
   try {
     const data = ctx.callbackQuery.data;
+    if (data === 'show_menu') {
+      const chatId = ctx.chat.id;
+      const currentMode = getUserMode(chatId);
+      await ctx.replyWithHTML("⚙️ <b>Tarjima tilini tanlang:</b>", {
+        reply_markup: getKeyboard(currentMode)
+      });
+      await ctx.answerCbQuery();
+      return;
+    }
+
     if (data.startsWith('set_mode:')) {
       const modeKey = data.split(':')[1];
       if (translationModes[modeKey]) {
@@ -367,7 +377,12 @@ bot.on('text', async (ctx) => {
       `🧭 <i>Rejim: ${mode.label}</i>`;
 
     await ctx.replyWithHTML(responseText, {
-      reply_to_message_id: ctx.message.message_id
+      reply_to_message_id: ctx.message.message_id,
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "⚙️ Tilni o'zgartirish", callback_data: "show_menu" }]
+        ]
+      }
     });
   } catch (error) {
     console.error("Text translation error:", error);
@@ -430,7 +445,12 @@ bot.on('voice', async (ctx) => {
       `🧭 <i>Rejim: ${mode.label}</i>`;
 
     await ctx.replyWithHTML(responseText, {
-      reply_to_message_id: ctx.message.message_id
+      reply_to_message_id: ctx.message.message_id,
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "⚙️ Tilni o'zgartirish", callback_data: "show_menu" }]
+        ]
+      }
     });
 
   } catch (error) {
