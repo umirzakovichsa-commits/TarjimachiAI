@@ -127,6 +127,7 @@ def get_user_display_name(user) -> str:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Bot /start komandasi yuborilganda javob beradi."""
     user = update.effective_user
+    logger.info(f"Start buyrug'i keldi. User ID: {user.id}")
     await update.message.reply_html(
         f"Salom {user.mention_html()}!\n\n"
         "Men kassa cheklarini tasdiqlovchi botman.\n"
@@ -146,6 +147,7 @@ async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def send_format_warning(message, context: ContextTypes.DEFAULT_TYPE):
     """Noto'g'ri format haqida ogohlantirish yuborish."""
+    logger.info(f"Foydalanuvchiga format xatosi haqida ogohlantirish yuborilmoqda: {message.from_user.id}")
     await message.reply_text(
         "⚠️ <b>To'lov ma'lumotlari formati noto'g'ri yoki to'liq emas!</b>\n\n"
         "Iltimos, rasmni tagiga (caption qismiga) ma'lumotlarni quyidagi tartibda yozib yuboring:\n"
@@ -162,8 +164,11 @@ async def send_format_warning(message, context: ContextTypes.DEFAULT_TYPE):
 
 async def proceed_with_receipt(main_message, all_messages, client, invoice, amount, context: ContextTypes.DEFAULT_TYPE):
     """To'lov ma'lumotlarini tekshirib guruhga yuborish."""
+    logger.info(f"To'lovni qayta ishlash boshlandi. Nakladnoy: {invoice}, Mijoz: {client}, Summa: {amount}")
+    
     # Dublikat tekshiruvi
     if db.check_invoice_exists(invoice):
+        logger.info(f"Dublikat yuk hujjati aniqlandi: {invoice}")
         await main_message.reply_text(
             f"❌ <b>Yuk hujjati rad etildi!</b>\n"
             f"Diqqat, <code>{invoice}</code> raqamli yuk hujjati avval tasdiqlangan! "
@@ -215,6 +220,7 @@ async def proceed_with_receipt(main_message, all_messages, client, invoice, amou
         if len(all_messages) == 1:
             has_media = bool(main_message.photo or main_message.document)
             if has_media:
+                logger.info(f"Bitta rasmli xabar guruhga ({GROUP_CHAT_ID}) nusxalanmoqda...")
                 copied_msg = await context.bot.copy_message(
                     chat_id=GROUP_CHAT_ID,
                     from_chat_id=main_message.chat_id,
@@ -225,6 +231,7 @@ async def proceed_with_receipt(main_message, all_messages, client, invoice, amou
                 )
                 group_message_id = copied_msg.message_id
             else:
+                logger.info(f"Matnli xabar guruhga ({GROUP_CHAT_ID}) yuborilmoqda...")
                 sent_msg = await context.bot.send_message(
                     chat_id=GROUP_CHAT_ID,
                     text=group_text,
@@ -235,6 +242,7 @@ async def proceed_with_receipt(main_message, all_messages, client, invoice, amou
         
         # Agar ko'p rasm (albom) bo'lsa
         else:
+            logger.info(f"Albom ko'rinishidagi {len(all_messages)} ta rasm guruhga ({GROUP_CHAT_ID}) yuborilmoqda...")
             media_list = []
             for msg in all_messages:
                 if msg.photo:
@@ -263,12 +271,13 @@ async def proceed_with_receipt(main_message, all_messages, client, invoice, amou
 
         # Bazaga guruh xabari ID sini yozib qo'yish
         db.update_group_message_id(receipt_id, group_message_id)
+        logger.info(f"To'lov guruhga yuborildi. Guruh xabar ID: {group_message_id}")
 
         # Agentga shaxsiy chatida tasdiqlashga yuborilganini bildirish
         await main_message.reply_text("⏳ To'lov guruhga tasdiqlash uchun yuborildi. Kassir ko'rib chiqqanidan so'ng sizga hisobot boradi.")
 
     except Exception as e:
-        logger.error(f"Guruhga xabar yuborishda xatolik: {e}")
+        logger.error(f"Guruhga xabar yuborishda xatolik: {e}", exc_info=True)
         await main_message.reply_text("⚠️ Xatolik: To'lovni guruhga yo'naltirib bo'lmadi. Bot sozlamalarini tekshiring.")
 
 async def process_media_group(media_id: str, context: ContextTypes.DEFAULT_TYPE):
@@ -279,6 +288,7 @@ async def process_media_group(media_id: str, context: ContextTypes.DEFAULT_TYPE)
     if not messages:
         return
 
+    logger.info(f"Albom qabul qilindi. Rasmlar soni: {len(messages)}, media_group_id: {media_id}")
     main_message = None
     client, invoice, amount = None, None, None
 
@@ -291,6 +301,7 @@ async def process_media_group(media_id: str, context: ContextTypes.DEFAULT_TYPE)
             break
 
     if not main_message:
+        logger.info("Albom ichidan to'g'ri formatdagi matn topilmadi.")
         first_msg = messages[0]
         await send_format_warning(first_msg, context)
         return
@@ -306,14 +317,23 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if message.from_user and message.from_user.is_bot:
         return
 
+    # Batafsil log yozish (Kelgan xabarni kuzatish uchun)
+    logger.info(
+        f"YANGI XABAR KELDI -> Chat ID: {message.chat_id}, Chat turi: {message.chat.type}, "
+        f"Yuboruvchi: {message.from_user.id} ({message.from_user.username}), "
+        f"Media Group: {message.media_group_id}, Caption: {bool(message.caption)}, Text: {bool(message.text)}"
+    )
+
     # Faqat shaxsiy chatda ishlashi kerak (guruhlardagi oddiy yozishmalarga aralashmaslik uchun)
     if message.chat.type != "private":
+        logger.info(f"Xabar shaxsiy chatdan kelmagani uchun bekor qilindi (Chat turi: {message.chat.type})")
         return
 
     has_media = bool(message.photo or message.document)
     is_text = bool(message.text)
 
     if not (has_media or is_text):
+        logger.info("Xabar rasm, fayl yoki matn emasligi uchun bekor qilindi.")
         return
 
     # Albom (media group) bo'lsa
@@ -329,6 +349,7 @@ async def handle_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         client, invoice, amount = parse_receipt_text(text_content)
 
         if not client or not invoice or not amount:
+            logger.info(f"Matn formati xato: '{text_content}'")
             await send_format_warning(message, context)
             return
 
@@ -340,6 +361,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await query.answer()
 
     callback_data = query.data
+    logger.info(f"Tugma bosildi. Callback: {callback_data}, Bosgan user: {query.from_user.id}")
+    
     if not (callback_data.startswith("approve_") or callback_data.startswith("reject_")):
         return
 
@@ -433,8 +456,8 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("my_id", get_my_id))
 
-    # Agentning shaxsiy xabarlarini ushlash (rasm, hujjat va matn)
-    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (filters.PHOTO | filters.Document.ALL | filters.TEXT) & ~filters.COMMAND, handle_receipt))
+    # Agentning shaxsiy xabarlarini ushlash (filters.ALL ishlatilib handler ichida filtrlash)
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_receipt))
 
     # Guruhdagi tugmalar bosilishini ushlash
     application.add_handler(CallbackQueryHandler(button_callback))
